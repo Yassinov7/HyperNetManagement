@@ -122,7 +122,7 @@ export default async function DashboardLayout({
               className="flex items-center justify-center"
             >
               <Image
-                src="/hypernet.jpeg"
+                src="/hypernet.png"
                 alt="HyperNet"
                 width={180}
                 height={50}
