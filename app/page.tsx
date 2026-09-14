@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function DashboardPage() {
+export default async function HomePage() {
   const supabase = await createClient();
 
   const {
@@ -14,26 +14,19 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, username, is_active")
+    .select("is_active")
     .eq("id", user.id)
     .single();
 
-  if (!profile?.is_active) {
+  if (!profile) {
+    await supabase.auth.signOut();
     redirect("/login");
   }
 
-  return (
-    <main
-      dir="rtl"
-      className="min-h-screen bg-[#031B30] p-8 text-white"
-    >
-      <h1 className="text-3xl font-bold">
-        مرحباً، {profile.full_name}
-      </h1>
+  if (!profile.is_active) {
+    await supabase.auth.signOut();
+    redirect("/login?error=account_inactive");
+  }
 
-      <p className="mt-2 text-slate-400">
-        لوحة تحكم HyperNet
-      </p>
-    </main>
-  );
+  redirect("/dashboard");
 }

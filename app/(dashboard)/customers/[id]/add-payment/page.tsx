@@ -38,6 +38,8 @@ export default async function AddPaymentPage({ params }: Props) {
     redirect("/customers");
   }
 
+  const customerName = customer.full_name;
+
   const totalCharges =
     charges?.reduce((sum, item) => sum + Number(item.amount), 0) ?? 0;
 
@@ -60,8 +62,10 @@ export default async function AddPaymentPage({ params }: Props) {
     }
 
     const amount = Number(formData.get("amount"));
-    const paymentDate = String(formData.get("payment_date"));
-    const paymentMethod = String(formData.get("payment_method"));
+    const paymentDate = String(formData.get("payment_date") || "");
+    const paymentMethod = String(
+      formData.get("payment_method") || ""
+    );
     const reference = String(formData.get("reference") || "").trim();
     const notes = String(formData.get("notes") || "").trim();
 
@@ -69,19 +73,141 @@ export default async function AddPaymentPage({ params }: Props) {
       throw new Error("Invalid payment amount");
     }
 
-    const { error } = await supabase.from("payments").insert({
-      customer_id: id,
-      amount,
-      payment_date: paymentDate,
-      payment_method: paymentMethod,
-      reference: reference || null,
-      notes: notes || null,
-      created_by: user.id,
-    });
-
-    if (error) {
-      throw new Error(error.message);
+    if (!paymentDate) {
+      throw new Error("Payment date is required");
     }
+
+    if (!["cash", "transfer", "other"].includes(paymentMethod)) {
+      throw new Error("Invalid payment method");
+    }
+
+    // =========================================================
+    // 1. الحصول على صندوق الشركة
+    // =========================================================
+
+    const { data: companyCash, error: companyCashError } =
+      await supabase
+        .from("financial_accounts")
+        .select("id, name")
+        .eq("account_type", "company_cash")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+
+    if (companyCashError) {
+      throw new Error(companyCashError.message);
+    }
+
+    if (!companyCash) {
+      throw new Error("لم يتم العثور على صندوق الشركة");
+    }
+
+    // =========================================================
+    // 2. إنشاء الحركة المالية
+    // =========================================================
+
+    const { data: financialTransaction, error: transactionError } =
+      await supabase
+        .from("financial_transactions")
+        .insert({
+          transaction_type: "customer_payment",
+          amount,
+          transaction_date: paymentDate,
+          description:
+            notes ||
+              `دفعة من العميل: ${customerName}`,
+          reference: reference || null,
+          customer_id: id,
+          created_by: user.id,
+          metadata: {
+            payment_method: paymentMethod,
+            source: "customer_payment",
+          },
+        })
+        .select("id")
+        .single();
+
+    if (transactionError || !financialTransaction) {
+      throw new Error(
+        transactionError?.message ||
+          "فشل إنشاء الحركة المالية"
+      );
+    }
+
+    // =========================================================
+    // 3. تسجيل دخول المبلغ إلى صندوق الشركة
+    // =========================================================
+
+    const { error: entryError } = await supabase
+      .from("financial_transaction_entries")
+      .insert({
+        transaction_id: financialTransaction.id,
+        account_id: companyCash.id,
+        signed_amount: amount,
+      });
+
+    if (entryError) {
+      // تنظيف الحركة المالية التي أنشأناها للتو
+      await supabase
+        .from("financial_transactions")
+        .delete()
+        .eq("id", financialTransaction.id);
+
+      throw new Error(
+        `فشل تسجيل المبلغ في صندوق الشركة: ${entryError.message}`
+      );
+    }
+
+    // =========================================================
+    // 4. إنشاء سجل payment وربطه بالحركة المالية
+    // =========================================================
+
+    const { data: payment, error: paymentError } =
+      await supabase
+        .from("payments")
+        .insert({
+          customer_id: id,
+          amount,
+          payment_date: paymentDate,
+          payment_method: paymentMethod,
+          reference: reference || null,
+          notes: notes || null,
+          created_by: user.id,
+
+          // ربط الدفعة بالحركة المالية
+          financial_transaction_id: financialTransaction.id,
+
+          // كل دفعات العملاء تدخل صندوق الشركة
+          financial_account_id: companyCash.id,
+        })
+        .select("id")
+        .single();
+
+    if (paymentError || !payment) {
+      // حذف entry أولًا
+      await supabase
+        .from("financial_transaction_entries")
+        .delete()
+        .eq(
+          "transaction_id",
+          financialTransaction.id
+        );
+
+      // ثم حذف transaction
+      await supabase
+        .from("financial_transactions")
+        .delete()
+        .eq("id", financialTransaction.id);
+
+      throw new Error(
+        paymentError?.message ||
+          "فشل تسجيل دفعة العميل"
+      );
+    }
+
+    // =========================================================
+    // 5. نجاح العملية
+    // =========================================================
 
     redirect(`/customers/${id}`);
   }
@@ -99,11 +225,15 @@ export default async function AddPaymentPage({ params }: Props) {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold text-white">تسجيل دفعة</h1>
+        <h1 className="text-2xl font-bold text-white">
+          تسجيل دفعة
+        </h1>
 
         <p className="mt-1 text-sm text-slate-400">
           {customer.full_name}
-          {customer.username ? ` — @${customer.username}` : ""}
+          {customer.username
+            ? ` — @${customer.username}`
+            : ""}
         </p>
       </div>
 
@@ -111,10 +241,15 @@ export default async function AddPaymentPage({ params }: Props) {
       <div className="rounded-2xl border border-cyan-400/20 bg-[#071d31] p-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-slate-400">المتبقي الحالي</p>
+            <p className="text-sm text-slate-400">
+              المتبقي الحالي
+            </p>
 
             <p className="mt-2 text-3xl font-bold text-cyan-400">
-              {new Intl.NumberFormat("ar-SY").format(outstanding)} ل.س
+              {new Intl.NumberFormat("ar-SY").format(
+                outstanding
+              )}{" "}
+              ل.س
             </p>
           </div>
 
@@ -124,6 +259,7 @@ export default async function AddPaymentPage({ params }: Props) {
         </div>
       </div>
 
+      {/* Payment form */}
       <form
         action={addPayment}
         className="space-y-5 rounded-2xl border border-cyan-400/10 bg-[#071d31] p-6"
@@ -198,6 +334,28 @@ export default async function AddPaymentPage({ params }: Props) {
             placeholder="ملاحظات إضافية..."
             className="w-full resize-none rounded-xl border border-slate-700 bg-[#061625] px-4 py-3 text-white outline-none focus:border-cyan-400"
           />
+        </div>
+
+        {/* Financial information */}
+        <div className="rounded-xl border border-cyan-400/10 bg-[#061625] p-4">
+          <p className="text-sm font-medium text-slate-300">
+            المعالجة المالية
+          </p>
+
+          <p className="mt-1 text-sm text-slate-500">
+            سيتم تسجيل الدفعة على حساب العميل، وإضافة
+            المبلغ تلقائيًا إلى صندوق الشركة.
+          </p>
+
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-slate-500">
+              الحساب المستلم
+            </span>
+
+            <span className="font-medium text-cyan-400">
+              صندوق الشركة
+            </span>
+          </div>
         </div>
 
         <div className="flex gap-3 pt-2">

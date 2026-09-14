@@ -11,6 +11,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  Wallet,
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
@@ -45,6 +46,11 @@ const navigation = [
     name: "التقارير",
     href: "/reports",
     icon: BarChart3,
+  },
+  {
+    name: "المالية",
+    href: "/finance",
+    icon: Wallet,
   },
   {
     name: "المسؤولون",
