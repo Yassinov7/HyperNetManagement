@@ -1,16 +1,16 @@
 {
-  "name": "UniRide",
-  "short_name": "UniRide",
-  "description": "نظام ذكي لتنظيم نقل الطلاب بين الجامعة والسكن",
-  "lang": "ar",
-  "dir": "rtl",
-  "start_url": "/auth-redirect",
+  "name": "HyperNet Management System",
+  "short_name": "HyperNet",
+  "description": "نظام إدارة العملاء والحسابات في HyperNet",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "portrait",
   "background_color": "#031B30",
   "theme_color": "#031B30",
+  "lang": "ar",
+  "dir": "rtl",
   "icons": [
     {
       "src": "/android-chrome-512x512.png",
