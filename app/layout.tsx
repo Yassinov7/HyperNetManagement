@@ -71,7 +71,10 @@ export default function RootLayout({
         playfairDisplayHeading.variable
       )}
     >
-      <body className="min-h-screen bg-[#031B30] text-white antialiased">
+      <head>
+<link rel="manifest" href="/manifest.json" />
+</head>
+<body className="min-h-screen bg-[#031B30] text-white antialiased">
         {children}
       </body>
     </html>
