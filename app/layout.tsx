@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     apple: "/icon-192.png",
   },
 
-  manifest: "/manifest.json",
+  manifest: "/webmanifest.json",
 };
 
 export const viewport: Viewport = {
@@ -72,7 +72,7 @@ export default function RootLayout({
       )}
     >
       <head>
-<link rel="manifest" href="/manifest.json" />
+<link rel="manifest" href="/webmanifest.json" />
 </head>
 <body className="min-h-screen bg-[#031B30] text-white antialiased">
         {children}
